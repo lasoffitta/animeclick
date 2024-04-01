@@ -151,17 +151,20 @@ def start(update, context):
     bot.send_message(chat_id=update.message.chat_id, text="Per favore, inserisci un titolo di anime.")
 
 if __name__ == "__main__":
+    # Crea un'istanza del bot di Telegram
+    bot = Bot(token=TELEGRAM_TOKEN_BOT)
+    
     # Crea un'istanza del Dispatcher
     dp = Dispatcher(bot, None, use_context=True)
-
+    
     # Aggiungi un gestore di comandi al dispatcher
     dp.add_handler(CommandHandler("start", start))
-
+    
     # Aggiungi un gestore di messaggi al dispatcher
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-
+    
     # Imposta il webhook
     set_webhook()
-
+    
     # Avvia il bot
     app.run(host="0.0.0.0", port=int(os.getenv('PORT', 5000)))
