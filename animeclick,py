@@ -89,13 +89,11 @@ def scrape_anime_info(driver, url):
 
         return info
 
-def search_anime(driver):
+def search_anime(driver, anime_title):
     # Assicurati di essere sulla pagina principale prima di iniziare la ricerca
     if driver.current_url != "https://www.animeclick.it/":
         load_intro_page(driver)
     while True:
-        anime_title = input("Inserisci il titolo dell'anime: ")
-
         # Trova il form di ricerca e inserisce il titolo dell'anime
         search_input = driver.find_element(By.ID, "globalSearch")
         search_input.clear()
@@ -114,29 +112,17 @@ def search_anime(driver):
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, "#topSearchResultList .list.opera a"))
             )
 
-            # Stampa i risultati nel terminale
-            for i, result in enumerate(all_results, start=1):
-                print(f"{i}. {result.text}")
-
-            # Chiedi all'utente di scegliere un risultato o inserire un nuovo titolo
-            choice = input("Scegli un risultato oppure inserisci nuovo titolo: ")
-
-            try:
-                # Se l'input dell'utente può essere convertito in un numero, lo consideriamo come una scelta di risultato
-                choice = int(choice) - 1
-
-                # Scorri l'elemento scelto in vista
-                driver.execute_script("arguments[0].scrollIntoView();", all_results[choice])
-
-                # Fai clic sul risultato scelto per caricare la pagina dell'anime
-                all_results[choice].click()
-
-                # Ritorna l'URL della nuova pagina
+            # Se c'è solo un risultato, ritorna direttamente l'URL
+            if len(all_results) == 1:
+                all_results[0].click()
                 return driver.current_url
 
-            except ValueError:
-                # Se l'input dell'utente non può essere convertito in un numero, lo consideriamo come un nuovo titolo di ricerca
-                continue
+            # Altrimenti, invia un messaggio con tutti i risultati
+            results_message = "\n".join(f"{i+1}. {result.text}" for i, result in enumerate(all_results))
+            bot.send_message(chat_id=update.message.chat_id, text=results_message)
+
+            # Chiedi all'utente di scegliere un risultato
+            return None
 
         except (NoSuchElementException, TimeoutException):
             print("Anime non trovato. Inserisci un nuovo titolo.")
