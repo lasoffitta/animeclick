@@ -8,6 +8,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from bs4 import BeautifulSoup
 import os
 import requests
@@ -50,12 +51,29 @@ def handle_message(update, context):
         return
 
     # Vai alla pagina web
-    driver.get(url)
+    try:
+        driver.get(url)
+    except TimeoutException:
+        bot.send_message(chat_id=update.message.chat_id, text="Timeout durante il caricamento della pagina. Riprovo...")
+        try:
+            driver.get(url)
+        except TimeoutException:
+            bot.send_message(chat_id=update.message.chat_id, text="Impossibile caricare la pagina dopo il secondo tentativo. Per favore, prova con un altro URL.")
+            return
 
     # Ora procedi con il scraping
     soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-    dl = soup.find('dl', {'class': 'dl-horizontal'})
+    try:
+        dl = soup.find('dl', {'class': 'dl-horizontal'})
+        if dl is None:
+            raise NoSuchElementException
+    except NoSuchElementException:
+        bot.send_message(chat_id=update.message.chat_id, text="Elemento dl non trovato, tentativo di ricaricare la pagina...")
+        driver.get(url)
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        dl = soup.find('dl', {'class': 'dl-horizontal'})
+
     dt_dd_pairs = zip(dl.find_all('dt'), dl.find_all('dd'))
 
     info = {}
