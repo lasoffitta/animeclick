@@ -19,8 +19,7 @@ app = Flask(__name__)
 # Ottieni il token del bot di Telegram dall'ambiente
 TELEGRAM_TOKEN_BOT = os.getenv('TELEGRAM_TOKEN_BOT')
 
-# Crea un'istanza del bot di Telegram
-bot = Bot(token=TELEGRAM_TOKEN_BOT)
+# Crea un'istanza del bot di Telegrambot = Bot(token=TELEGRAM_TOKEN_BOT)
 
 # Crea un'istanza del driver del browser
 options = Options()
@@ -40,50 +39,99 @@ def set_webhook():
     r = requests.post(url, params=params)
     print(r.json())
 
-def handle_message(update, context):
-    # Ottieni l'URL dal messaggio dell'utente
-    url = update.message.text
-    bot.send_message(chat_id=update.message.chat_id, text=f"URL ricevuto: {url}")
+def load_intro_page(driver, intro_url):
+    driver.get(intro_url)
+    time.sleep(5)  # aspetta che la pagina si carichi completamente
 
-    # Verifica che l'URL sia un URL valido da animeclick.it
-    if 'animeclick.it' not in url:
-        bot.send_message(chat_id=update.message.chat_id, text="Per favore, inserisci un URL valido da animeclick.it.")
-        return
-
-    # Vai alla pagina web
+def scrape_anime_info(driver, url):
     try:
         driver.get(url)
-    except TimeoutException:
-        bot.send_message(chat_id=update.message.chat_id, text="Timeout durante il caricamento della pagina. Riprovo...")
-        try:
-            driver.get(url)
-        except TimeoutException:
-            bot.send_message(chat_id=update.message.chat_id, text="Impossibile caricare la pagina dopo il secondo tentativo. Per favore, prova con un altro URL.")
-            return
 
-    # Ora procedi con il scraping
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+        # Ora procedi con il scraping
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-    try:
         dl = soup.find('dl', {'class': 'dl-horizontal'})
         if dl is None:
             raise NoSuchElementException
+
+        dt_dd_pairs = zip(dl.find_all('dt'), dl.find_all('dd'))
+
+        info = {}
+        for dt, dd in dt_dd_pairs:
+            if dt.text in ['Titolo originale', 'Titolo inglese', 'Genere', 'Anno', 'Episodi']:
+                info[dt.text] = ' '.join(dd.stripped_strings)
+
+        trama_div = soup.find('div', {'id': 'trama-div'})
+        if trama_div:
+            info['Trama'] = trama_div.text.replace('Trama:', '').strip()
+
+        return info
+
     except NoSuchElementException:
-        bot.send_message(chat_id=update.message.chat_id, text="Elemento dl non trovato, tentativo di ricaricare la pagina...")
+        print("Elemento dl non trovato, tentativo di ricaricare la pagina...")
         driver.get(url)
+
+        # Ora procedi con il scraping
         soup = BeautifulSoup(driver.page_source, 'html.parser')
+
         dl = soup.find('dl', {'class': 'dl-horizontal'})
+        dt_dd_pairs = zip(dl.find_all('dt'), dl.find_all('dd'))
 
-    dt_dd_pairs = zip(dl.find_all('dt'), dl.find_all('dd'))
+        info = {}
+        for dt, dd in dt_dd_pairs:
+            if dt.text in ['Titolo originale', 'Titolo inglese', 'Genere', 'Anno', 'Episodi']:
+                info[dt.text] = ' '.join(dd.stripped_strings)
 
-    info = {}
-    for dt, dd in dt_dd_pairs:
-        if dt.text in ['Titolo originale', 'Titolo inglese', 'Genere', 'Anno', 'Episodi']:
-            info[dt.text] = ' '.join(dd.stripped_strings)
+        trama_div = soup.find('div', {'id': 'trama-div'})
+        if trama_div:
+            info['Trama'] = trama_div.text.replace('Trama:', '').strip()
 
-    trama_div = soup.find('div', {'id': 'trama-div'})
-    if trama_div:
-        info['Trama'] = trama_div.text.replace('Trama:', '').strip()
+        return info
+
+def search_anime(driver, anime_title):
+    # Trova il form di ricerca e inserisce il titolo dell'anime
+    search_input = driver.find_element(By.ID, "globalSearch")
+    search_input.clear()
+    search_input.send_keys(anime_title)
+    # Aggiungi un ritardo dopo l'inserimento del nuovo titolo
+    time.sleep(2)
+
+    # Aspetta che il menu a tendina dei risultati della ricerca appaia
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, "topSearchResultList"))
+    )
+
+    try:
+        # Seleziona tutti i risultati dal menu a tendina
+        all_results = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "#topSearchResultList .list.opera a"))
+        )
+
+        # Fai clic sul primo risultato per caricare la pagina dell'anime
+        all_results[0].click()
+
+        # Ritorna l'URL della nuova pagina
+        return driver.current_url
+
+    except (NoSuchElementException, TimeoutException):
+        return None
+
+def handle_message(update, context):
+    # Ottieni il titolo dell'anime dal messaggio dell'utente
+    title = update.message.text
+    bot.send_message(chat_id=update.message.chat_id, text=f"Titolo ricevuto: {title}")
+
+    # Carica la pagina intro
+    load_intro_page(driver, intro_url)
+
+    # Cerca l'anime con il titolo fornito
+    anime_url = search_anime(driver, title)
+    if anime_url is None:
+        bot.send_message(chat_id=update.message.chat_id, text="Anime non trovato. Per favore, prova con un altro titolo.")
+        return
+
+    # Estrai le informazioni sull'anime
+    info = scrape_anime_info(driver, anime_url)
 
     for key, value in info.items():
         bot.send_message(chat_id=update.message.chat_id, text=f'{key}: {value}')
@@ -99,7 +147,7 @@ def webhook():
     return "OK"
 
 def start(update, context):
-    bot.send_message(chat_id=update.message.chat_id, text="Per favore, inserisci un URL valido da animeclick.it.")
+    bot.send_message(chat_id=update.message.chat_id, text="Per favore, inserisci un titolo di anime.")
 
 if __name__ == "__main__":
     # Crea un'istanza del Dispatcher
