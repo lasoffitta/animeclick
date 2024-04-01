@@ -22,4 +22,4 @@ RUN pip install -r requirements.txt
 EXPOSE 80
 
 # Esegui lo script Python quando il contenitore viene avviato
-CMD ["python", "tunefind.py"]
+CMD ["python", "animeclick,py"]
