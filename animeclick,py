@@ -89,33 +89,58 @@ def scrape_anime_info(driver, url):
 
         return info
 
-def search_anime(driver, anime_title):
-    # Trova il form di ricerca e inserisce il titolo dell'anime
-    search_input = driver.find_element(By.ID, "globalSearch")
-    search_input.clear()
-    search_input.send_keys(anime_title)
-    # Aggiungi un ritardo dopo l'inserimento del nuovo titolo
-    time.sleep(2)
+def search_anime(driver):
+    # Assicurati di essere sulla pagina principale prima di iniziare la ricerca
+    if driver.current_url != "https://www.animeclick.it/":
+        load_intro_page(driver)
+    while True:
+        anime_title = input("Inserisci il titolo dell'anime: ")
 
-    # Aspetta che il menu a tendina dei risultati della ricerca appaia
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.ID, "topSearchResultList"))
-    )
+        # Trova il form di ricerca e inserisce il titolo dell'anime
+        search_input = driver.find_element(By.ID, "globalSearch")
+        search_input.clear()
+        search_input.send_keys(anime_title)
+        # Aggiungi un ritardo dopo l'inserimento del nuovo titolo
+        time.sleep(2)
 
-    try:
-        # Seleziona tutti i risultati dal menu a tendina
-        all_results = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "#topSearchResultList .list.opera a"))
+        # Aspetta che il menu a tendina dei risultati della ricerca appaia
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "topSearchResultList"))
         )
 
-        # Fai clic sul primo risultato per caricare la pagina dell'anime
-        all_results[0].click()
+        try:
+            # Seleziona tutti i risultati dal menu a tendina
+            all_results = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "#topSearchResultList .list.opera a"))
+            )
 
-        # Ritorna l'URL della nuova pagina
-        return driver.current_url
+            # Stampa i risultati nel terminale
+            for i, result in enumerate(all_results, start=1):
+                print(f"{i}. {result.text}")
 
-    except (NoSuchElementException, TimeoutException):
-        return None
+            # Chiedi all'utente di scegliere un risultato o inserire un nuovo titolo
+            choice = input("Scegli un risultato oppure inserisci nuovo titolo: ")
+
+            try:
+                # Se l'input dell'utente può essere convertito in un numero, lo consideriamo come una scelta di risultato
+                choice = int(choice) - 1
+
+                # Scorri l'elemento scelto in vista
+                driver.execute_script("arguments[0].scrollIntoView();", all_results[choice])
+
+                # Fai clic sul risultato scelto per caricare la pagina dell'anime
+                all_results[choice].click()
+
+                # Ritorna l'URL della nuova pagina
+                return driver.current_url
+
+            except ValueError:
+                # Se l'input dell'utente non può essere convertito in un numero, lo consideriamo come un nuovo titolo di ricerca
+                continue
+
+        except (NoSuchElementException, TimeoutException):
+            print("Anime non trovato. Inserisci un nuovo titolo.")
+            continue
 
 def handle_message(update, context):
     # Ottieni il titolo dell'anime dal messaggio dell'utente
