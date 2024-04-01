@@ -92,7 +92,7 @@ def scrape_anime_info(driver, url):
 def search_anime(driver, anime_title):
     # Assicurati di essere sulla pagina principale prima di iniziare la ricerca
     if driver.current_url != "https://www.animeclick.it/":
-        load_intro_page(driver)
+        load_intro_page(driver, intro_url)
     while True:
         # Trova il form di ricerca e inserisce il titolo dell'anime
         search_input = driver.find_element(By.ID, "globalSearch")
