@@ -1,0 +1,100 @@
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, MessageHandler, Filters
+from telegram.ext import CommandHandler
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+import os
+import requests
+import time
+
+app = Flask(__name__)
+
+# Ottieni il token del bot di Telegram dall'ambiente
+TELEGRAM_TOKEN_BOT = os.getenv('TELEGRAM_TOKEN_BOT')
+
+# Crea un'istanza del bot di Telegram
+bot = Bot(token=TELEGRAM_TOKEN_BOT)
+
+# Crea un'istanza del driver del browser
+options = Options()
+options.add_argument("--headless")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+driver = webdriver.Chrome(executable_path='/usr/local/bin/chromedriver', options=options)
+driver.set_page_load_timeout(30)
+
+@app.route('/')
+def home():
+    return "Benvenuto al bot di Telegram per Animeclick!"
+
+def set_webhook():
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN_BOT}/setWebhook"
+    params = {'url': 'https://animeclick.onrender.com/' + TELEGRAM_TOKEN_BOT}
+    r = requests.post(url, params=params)
+    print(r.json())
+
+def handle_message(update, context):
+    # Ottieni l'URL dal messaggio dell'utente
+    url = update.message.text
+    bot.send_message(chat_id=update.message.chat_id, text=f"URL ricevuto: {url}")
+
+    # Verifica che l'URL sia un URL valido da animeclick.it
+    if 'animeclick.it' not in url:
+        bot.send_message(chat_id=update.message.chat_id, text="Per favore, inserisci un URL valido da animeclick.it.")
+        return
+
+    # Vai alla pagina web
+    driver.get(url)
+
+    # Ora procedi con il scraping
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    dl = soup.find('dl', {'class': 'dl-horizontal'})
+    dt_dd_pairs = zip(dl.find_all('dt'), dl.find_all('dd'))
+
+    info = {}
+    for dt, dd in dt_dd_pairs:
+        if dt.text in ['Titolo originale', 'Titolo inglese', 'Genere', 'Anno', 'Episodi']:
+            info[dt.text] = ' '.join(dd.stripped_strings)
+
+    trama_div = soup.find('div', {'id': 'trama-div'})
+    if trama_div:
+        info['Trama'] = trama_div.text.replace('Trama:', '').strip()
+
+    for key, value in info.items():
+        bot.send_message(chat_id=update.message.chat_id, text=f'{key}: {value}')
+
+    # Chiudi il driver del browser dopo aver elaborato ogni URL
+    driver.quit()
+    bot.send_message(chat_id=update.message.chat_id, text="Driver del browser chiuso")
+
+@app.route('/' + TELEGRAM_TOKEN_BOT, methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(), bot)
+    dp.process_update(update)
+    return "OK"
+
+def start(update, context):
+    bot.send_message(chat_id=update.message.chat_id, text="Per favore, inserisci un URL valido da animeclick.it.")
+
+if __name__ == "__main__":
+    # Crea un'istanza del Dispatcher
+    dp = Dispatcher(bot, None, use_context=True)
+
+    # Aggiungi un gestore di comandi al dispatcher
+    dp.add_handler(CommandHandler("start", start))
+
+    # Aggiungi un gestore di messaggi al dispatcher
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+
+    # Imposta il webhook
+    set_webhook()
+
+    # Avvia il bot
+    app.run(host="0.0.0.0", port=int(os.getenv('PORT', 5000)))
